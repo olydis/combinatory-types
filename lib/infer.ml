@@ -2,8 +2,8 @@ open Core
 open Sk
 open Types
 
-(* The definitions in this module are largely direct
-   translations of Barry Jay's Rocq proofs. *)
+(* The definitions in this module are largely direct translations of Barry Jay's Rocq proofs
+   at https://github.com/barry-jay-personal/combinatory-types *)
 
 let rec infer_app fuel ty uty =
   Int.decr fuel;
@@ -85,16 +85,11 @@ let rec infer_app fuel ty uty =
                   | _ ->
                       (* unknown constructor *)
                       None)))
-    | S2ty (uty1, vty1) -> (
-        match infer_app fuel vty1 uty with
-        | None -> None
-        | Some vty2 -> (
-            match infer_app fuel uty1 uty with
-            | None -> None
-            | Some ty2 -> (
-                match infer_app fuel ty2 vty2 with
-                | None -> None
-                | Some wty -> Some wty)))
+    | S2ty (uty1, vty1) ->
+        let%bind.Option vty2 = infer_app fuel vty1 uty in
+        let%bind.Option ty2 = infer_app fuel uty1 uty in
+        let%bind.Option wty = infer_app fuel ty2 vty2 in
+        Some wty
     (* product types *)
     | Data2 (S1ty Sty, ty1, ty2) -> (
         match infer_app fuel uty ty1 with
@@ -149,24 +144,27 @@ let rec infer_app fuel ty uty =
     | _ -> None
 
 let rec infer fuel gamma m =
-  Int.decr fuel;
-  if !fuel = 0 then None
-  else
-    match m with
-    | Ref x -> get x gamma
-    | Sop -> Some Sty
-    | Kop -> Some Kty
-    | App (m1, m2) -> (
-        match (infer fuel gamma m1, infer fuel gamma m2) with
-        | Some ty, Some uty -> infer_app fuel ty uty
-        | _, _ -> None)
+  match m with
+  | Ref x -> get x gamma
+  | Sop -> Some Sty
+  | Kop -> Some Kty
+  | App (m1, m2) -> (
+      match (infer fuel gamma m1, infer fuel gamma m2) with
+      | Some ty, Some uty -> infer_app fuel ty uty
+      | _, _ -> None)
 
 (* Computes the ratio between inference steps and size of input term (may not terminate) *)
-let infer_measure m =
+let infer_measure ?assert_fails m =
   let fuel = ref 0 in
-  let _ = infer fuel [] m in
-  Float.of_int (- !fuel) /. Float.of_int (size m)
-  |> Float.round_decimal ~decimal_digits:2
+  let res = infer fuel [] m in
+  (match (assert_fails, res) with
+  | Some true, Some _ -> failwith "Expected inference to fail"
+  | Some false, None -> failwith "Expected inference to succeed"
+  | _ -> ());
+  ( size m,
+    - !fuel,
+    Float.of_int (- !fuel) /. Float.of_int (size m)
+    |> Float.round_decimal ~decimal_digits:2 )
 
 (* Limits the number of inference steps to 100x size of input term (always terminates) *)
 let infer_safe m =

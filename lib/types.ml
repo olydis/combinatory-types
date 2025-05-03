@@ -1,8 +1,8 @@
 open Core
 open Sk
 
-(* The definitions in this module are largely direct
-   translations of Barry Jay's Rocq proofs. *)
+(* The definitions in this module are largely direct translations of Barry Jay's Rocq proofs
+   at https://github.com/barry-jay-personal/combinatory-types *)
 
 type t =
   | Kty
