@@ -106,8 +106,13 @@ module Tag = struct
     let t_of_nat n = bits_of_nat n |> t_of_list ~t_of:t_of_bool in
     let t_of_pair x y = Sop * x * y in
     let t_of_option ~t_of = function None -> Kop | Some x -> Sop * t_of x in
-    fun { Tag.ctr; args } ->
+    fun ?args { Tag.ctr; args = tag_args } ->
       let ctr = t_of_nat ctr in
+      let args =
+        match args with
+        | Some args -> List.map2_exn args tag_args ~f:Option.first_some
+        | None -> tag_args
+      in
       let args = t_of_list ~t_of:(t_of_option ~t_of:Fn.id) args in
       Kop * t_of_pair ctr args
 

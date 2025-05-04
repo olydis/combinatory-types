@@ -14,7 +14,7 @@ let at_exn i l = List.nth_exn l i
 
 (* Pairing and projections *)
 
-let product, pairL =
+let product, pair =
   Data_type.create ~friendly_name:"product" ~type_args:2
     ~ctors:(fun _product_tag ->
       [
@@ -26,9 +26,9 @@ let product, pairL =
 
 let%expect_test "pairs" =
   let reduce t = print_s [%sexp (sk_red t : Sk.t)] in
-  reduce (fstL * (pairL * Ref "fst" * Ref "snd"));
+  reduce (fst * (pair * Ref "fst" * Ref "snd"));
   [%expect {| &fst |}];
-  reduce (sndL * (pairL * Ref "fst" * Ref "snd"));
+  reduce (snd * (pair * Ref "fst" * Ref "snd"));
   [%expect {| &snd |}]
 
 (* Booleans *)
@@ -36,12 +36,12 @@ let%expect_test "pairs" =
 let bool, (tt, ff) =
   Data_type.create ~friendly_name:"bool" ~type_args:0 ~ctors:(fun _bool_tag ->
       [
-        ([], fstL, fun ~app:_ _tag_args _args -> Some []);
-        ([], sndL, fun ~app:_ _tag_args _args -> Some []);
+        ([], fst, fun ~app:_ _tag_args _args -> Some []);
+        ([], snd, fun ~app:_ _tag_args _args -> Some []);
       ])
   |> fun (tag, ctors) -> (tag, to_tup2_exn ctors)
 
-let cond = "b" ^ "x" ^ "y" ^ (Ref "b" * (pairL * Ref "x" * Ref "y"))
+let cond = "b" ^ "x" ^ "y" ^ (Ref "b" * (pair * Ref "x" * Ref "y"))
 
 let%expect_test "bool" =
   let reduce t = print_s [%sexp (sk_red t : Sk.t)] in
@@ -74,9 +74,9 @@ let%expect_test "bool conversion" =
 let nat, (zero, succ) =
   Data_type.create ~friendly_name:"nat" ~type_args:0 ~ctors:(fun nat_tag ->
       [
-        ([], fstL, fun ~app:_ _tag_args _args -> Some []);
+        ([], fst, fun ~app:_ _tag_args _args -> Some []);
         ( [ `Term ("n", fun _ -> Tag.data_type_of nat_tag []) ],
-          Sop * sndL * (Kop * Ref "n"),
+          Sop * snd * (Kop * Ref "n"),
           fun ~app:_ _tag_args args ->
             match args with
             | [ n ] when equal_ty n (Tag.data_type_of nat_tag []) -> Some []
@@ -86,8 +86,8 @@ let nat, (zero, succ) =
 
 let one = succ * zero
 let rec num k = match k with 0 -> zero | n -> succ * num (n - 1)
-let isZero = "n" ^ (Ref "n" * (pairL * tt * (Kop * ff)))
-let predN = "n" ^ (Ref "n" * (pairL * zero * iop))
+let isZero = "n" ^ (Ref "n" * (pair * tt * (Kop * ff)))
+let predN = "n" ^ (Ref "n" * (pair * zero * iop))
 
 let%expect_test "nat" =
   print_s [%sexp (to_bool (isZero * zero) : bool)];
@@ -119,13 +119,13 @@ let sum, (inl, inr) =
   Data_type.create ~friendly_name:"sum" ~type_args:2 ~ctors:(fun _sum_tag ->
       [
         ( [ `Term ("l", fun args -> List.nth_exn args 0); `Type ("r", 1) ],
-          "p" ^ (fstL * Ref "p" * Ref "l"),
+          "p" ^ (fst * Ref "p" * Ref "l"),
           fun ~app:_ tag_args args ->
             match tag_args with
             | [ _; Some r ] -> Some (args @ [ r ])
             | _ -> None );
         ( [ `Type ("l", 0); `Term ("r", fun args -> List.nth_exn args 1) ],
-          "p" ^ (sndL * Ref "p" * Ref "r"),
+          "p" ^ (snd * Ref "p" * Ref "r"),
           fun ~app:_ tag_args args ->
             match tag_args with
             | [ Some l; _ ] -> Some ([ l ] @ args)
@@ -139,12 +139,12 @@ let%expect_test "sum" =
   let reduce t = print_s [%sexp (sk_red t : Sk.t)] in
   reduce
     (case_c
-    * (pairL * Ref "f" * Ref "g")
+    * (pair * Ref "f" * Ref "g")
     * (inl * Ref "left" * Tag.dummy_value (Ref "dummy")));
   [%expect {| (&f &left) |}];
   reduce
     (case_c
-    * (pairL * Ref "f" * Ref "g")
+    * (pair * Ref "f" * Ref "g")
     * (inr * Tag.dummy_value (Ref "dummy") * Ref "right"));
   [%expect {| (&g &right) |}]
 
@@ -183,6 +183,8 @@ let%expect_test "lam" =
   print_s [%sexp (to_bool (isZeroLam * one) : bool)];
   [%expect {| false |}]
 
+let id = "type" ^ (to_fun * iop * Ref "type")
+
 (* Recursion *)
 
 let rec_, z =
@@ -218,7 +220,14 @@ let rec_, z =
           in
           let%bind.Option vty2 = app ty2 arg in
           if equal_ty vty2 vty then Some vty else None
-      | _ -> None)
+      | [ fty ], vty ->
+          (* V1 -> V2 *)
+          let%bind.Option ty2 = app fty (Tag.data_type_of fun_ [ vty; vty ]) in
+          let%bind.Option vty2 = app ty2 arg in
+          if equal_ty vty2 vty then Some vty else None
+      | _ ->
+          print_s [%sexp (ty_args : t list)];
+          None)
   |> fun (tag, ctors) -> (tag, to_tup1_exn ctors)
 
 (* Primitive Recursion *)
@@ -226,14 +235,13 @@ let rec_, z =
 let primrec0 g h =
   z
   * ("z" ^ "p"
-    ^ sndL * Ref "p"
-      * (pairL * g
+    ^ snd * Ref "p"
+      * (pair * g
         * ("n1"
-          ^ (h * Ref "n1" * (Ref "z" * (pairL * (fstL * Ref "p") * Ref "n1"))))
-        ))
+          ^ (h * Ref "n1" * (Ref "z" * (pair * (fst * Ref "p") * Ref "n1"))))))
 
 let primrec g h x = primrec0 (g * x) (h * x)
-let prim_plus0 m n = primrec iop (Kop * (Kop * succ)) m * (pairL * zero * n)
+let prim_plus0 m n = primrec iop (Kop * (Kop * succ)) m * (pair * zero * n)
 let prim_plus = "m" ^ "n" ^ prim_plus0 (Ref "m") (Ref "n")
 
 let%expect_test "prim_plus" =
@@ -255,11 +263,11 @@ let minrec0 f =
   z
   * ("z" ^ "vn"
     ^ cond
-      * (f * (sndL * Ref "vn"))
-      * (sndL * Ref "vn")
-      * (Ref "z" * (pairL * (fstL * Ref "vn") * (succ * (sndL * Ref "vn")))))
+      * (f * (snd * Ref "vn"))
+      * (snd * Ref "vn")
+      * (Ref "z" * (pair * (fst * Ref "vn") * (succ * (snd * Ref "vn")))))
 
-let minrec f x = Sop * (Kop * minrec0 (f * x)) * (pairL * zero)
+let minrec f x = Sop * (Kop * minrec0 (f * x)) * (pair * zero)
 
 (* Lists *)
 
@@ -267,7 +275,7 @@ let list, (nil, cons) =
   Data_type.create ~friendly_name:"list" ~type_args:1 ~ctors:(fun list_tag ->
       [
         ( [ `Type ("elem_ty", 0) ],
-          fstL,
+          fst,
           fun ~app:_ tag_args _args ->
             match tag_args with [ Some uty ] -> Some [ uty ] | _ -> None );
         ( [
@@ -278,7 +286,7 @@ let list, (nil, cons) =
                   Tag.data_type_of product
                     [ ty; Tag.data_type_of list_tag [ ty ] ] );
           ],
-          "q" ^ (sndL * Ref "q" * Ref "p"),
+          "q" ^ (snd * Ref "q" * Ref "p"),
           fun ~app:_ tag_args args ->
             match (tag_args, args) with
             | ( [ ety1 ],
@@ -302,26 +310,25 @@ let list, (nil, cons) =
       ])
   |> fun (tag, ctors) -> (tag, to_tup2_exn ctors)
 
-let is_empty = "p" ^ (Ref "p" * (pairL * tt * (Kop * ff)))
+let is_empty = "p" ^ (Ref "p" * (pair * tt * (Kop * ff)))
 
 let%expect_test "list" =
   let reduce_bool t = print_s [%sexp (to_bool t : bool)] in
   let nil_nat = nil * Tag.dummy_value zero in
   reduce_bool (is_empty * nil_nat);
   [%expect {| true |}];
-  reduce_bool (is_empty * (cons * (pairL * Ref "x" * nil_nat)));
+  reduce_bool (is_empty * (cons * (pair * Ref "x" * nil_nat)));
   [%expect {| false |}];
   reduce_bool
-    (is_empty
-    * (cons * (pairL * Ref "x" * (cons * (pairL * Ref "y" * nil_nat)))));
+    (is_empty * (cons * (pair * Ref "x" * (cons * (pair * Ref "y" * nil_nat)))));
   [%expect {| false |}]
 
 let rec of_list dummy = function
   | [] -> nil * Tag.dummy_value dummy
-  | x :: xs -> cons * (pairL * x * of_list x xs)
+  | x :: xs -> cons * (pair * x * of_list x xs)
 
 let rec to_list t =
-  match sk_red (t * (pairL * Ref "nil" * ("p" ^ (Ref "p" * Ref "cons")))) with
+  match sk_red (t * (pair * Ref "nil" * ("p" ^ (Ref "p" * Ref "cons")))) with
   | Ref "nil" -> []
   | App (App (Ref "cons", hd), tl) -> hd :: to_list tl
   | _ -> failwith "invalid list"
@@ -333,30 +340,29 @@ let%expect_test "list conversion" =
   let nil_nat = nil * Tag.dummy_value zero in
   reduce_list nil_nat;
   [%expect {| () |}];
-  reduce_list (cons * (pairL * one * nil_nat));
+  reduce_list (cons * (pair * one * nil_nat));
   [%expect {| (1) |}];
-  reduce_list (cons * (pairL * zero * (cons * (pairL * one * nil_nat))));
+  reduce_list (cons * (pair * zero * (cons * (pair * one * nil_nat))));
   [%expect {| (0 1) |}];
   reduce_list (of_list zero []);
   [%expect {| () |}];
   reduce_list (of_list zero [ of_nat 7; of_nat 8; of_nat 9 ]);
   [%expect {| (7 8 9) |}]
 
-let fold_left_c f =
+let fold_left f =
   z
   * ("z" ^ "p"
-    ^ sndL * Ref "p"
-      * (pairL * (fstL * Ref "p")
+    ^ snd * Ref "p"
+      * (pair * (fst * Ref "p")
         * ("q"
           ^ Ref "z"
-            * (pairL
-              * (f * (fstL * Ref "p") * (fstL * Ref "q"))
-              * (sndL * Ref "q")))))
+            * (pair * (f * (fst * Ref "p") * (fst * Ref "q")) * (snd * Ref "q"))
+          )))
 
-let%expect_test "fold_left_c" =
+let%expect_test "fold_left" =
   let sum list =
-    let list = of_list zero (List.map ~f:of_nat list) in
-    let t = fold_left_c prim_plus * (pairL * zero * list) in
+    let list = List.map ~f:of_nat list |> of_list zero in
+    let t = fold_left prim_plus * (pair * zero * list) in
     print_s [%sexp (to_nat t : int)]
   in
   sum [];
@@ -367,3 +373,78 @@ let%expect_test "fold_left_c" =
   [%expect {| 3 |}];
   sum [ 9; 8; 7; 6; 5; 4; 3; 2; 1; 0 ];
   [%expect {| 45 |}]
+
+let empty_of =
+  z
+  * ("z" ^ "l"
+    ^ (Ref "l" * (pair * Ref "l" * ("q" ^ (Ref "z" * (snd * Ref "q"))))))
+
+let reverse =
+  "l"
+  ^ fold_left ("acc" ^ "x" ^ (cons * (pair * Ref "x" * Ref "acc")))
+    * (pair * (empty_of * Ref "l") * Ref "l")
+
+let%expect_test "reverse" =
+  let reverse list =
+    let list = List.map ~f:of_nat list |> of_list zero in
+    let t = reverse * list in
+    print_s [%sexp (to_list t |> List.map ~f:to_nat : int list)]
+  in
+  reverse [];
+  [%expect {| () |}];
+  reverse [ 42 ];
+  [%expect {| (42) |}];
+  reverse [ 0; 1; 2 ];
+  [%expect {| (2 1 0) |}];
+  reverse [ 9; 8; 7; 6; 5; 4; 3; 2; 1; 0 ];
+  [%expect {| (0 1 2 3 4 5 6 7 8 9) |}]
+
+let fold_right f =
+  "p"
+  ^ fold_left ("acc" ^ "x" ^ (f * Ref "x" * Ref "acc"))
+    * (pair * (fst * Ref "p") * (reverse * (snd * Ref "p")))
+
+let%expect_test "fold_right" =
+  let sum list =
+    let list = List.map ~f:of_nat list |> of_list zero in
+    let t = fold_right prim_plus * (pair * zero * list) in
+    print_s [%sexp (to_nat t : int)]
+  in
+  sum [];
+  [%expect {| 0 |}];
+  sum [ 42 ];
+  [%expect {| 42 |}];
+  sum [ 0; 1; 2 ];
+  [%expect {| 3 |}];
+  sum [ 9; 8; 7; 6; 5; 4; 3; 2; 1; 0 ];
+  [%expect {| 45 |}]
+
+let map elem_type =
+  "f" ^ "l"
+  ^ fold_right ("x" ^ "tl" ^ (cons * (pair * (Ref "f" * Ref "x") * Ref "tl")))
+    * (pair * (nil * elem_type) * Ref "l")
+
+let%expect_test "map" =
+  let map list =
+    let list = List.map ~f:of_nat list |> of_list zero in
+    let t = map (Tag.sk_of nat) * succ * list in
+    print_s [%sexp (to_list t |> List.map ~f:to_nat : int list)]
+  in
+  map [];
+  [%expect {| () |}];
+  map [ 42 ];
+  [%expect {| (43) |}];
+  map [ 0; 1; 2 ];
+  [%expect {| (1 2 3) |}];
+  map [ 9; 8; 7; 6; 5; 4; 3; 2; 1; 0 ];
+  [%expect {| (10 9 8 7 6 5 4 3 2 1) |}]
+
+let list_module elem_type =
+  let list elem_type = Tag.sk_of ~args:[ Some elem_type ] list in
+  let product u_type v_type =
+    Tag.sk_of ~args:[ Some u_type; Some v_type ] product
+  in
+  pair
+  * (pair * (nil * elem_type)
+    * (to_fun * cons * product elem_type (list elem_type)))
+  * (to_fun * reverse * list elem_type)

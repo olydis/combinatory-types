@@ -85,8 +85,8 @@ let%expect_test "star" =
   [%expect {| (&y &x) |}]
 
 let ki = Kop * iop
-let fstL = Sop * iop * (Kop * Kop)
-let sndL = Sop * iop * (Kop * ki)
+let fst = Sop * iop * (Kop * Kop)
+let snd = Sop * iop * (Kop * ki)
 
 (* Waiting *)
 
