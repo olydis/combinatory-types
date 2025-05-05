@@ -87,18 +87,18 @@ let nat, (zero, succ) =
 let one = succ * zero
 let rec num k = match k with 0 -> zero | n -> succ * num (n - 1)
 let isZero = "n" ^ (Ref "n" * (pair * tt * (Kop * ff)))
-let predN = "n" ^ (Ref "n" * (pair * zero * iop))
+let pred = "n" ^ (Ref "n" * (pair * zero * iop))
 
 let%expect_test "nat" =
   print_s [%sexp (to_bool (isZero * zero) : bool)];
   [%expect {| true |}];
   print_s [%sexp (to_bool (isZero * one) : bool)];
   [%expect {| false |}];
-  print_s [%sexp (to_bool (isZero * (predN * one)) : bool)];
+  print_s [%sexp (to_bool (isZero * (pred * one)) : bool)];
   [%expect {| true |}]
 
 let of_nat = num
-let rec to_nat t = if to_bool (isZero * t) then 0 else 1 + to_nat (predN * t)
+let rec to_nat t = if to_bool (isZero * t) then 0 else 1 + to_nat (pred * t)
 
 let%expect_test "nat conversion" =
   let reduce_nat t = print_s [%sexp (to_nat t : int)] in

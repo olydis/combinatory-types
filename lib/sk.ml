@@ -102,22 +102,22 @@ let%expect_test "tagged" =
 (* Pairing and projections *)
 
 let ki = Kop * iop
-let pairL = "x" ^ "y" ^ tagged ("f" ^ (Ref "f" * Ref "x" * Ref "y")) product_tag
+let pair = "x" ^ "y" ^ tagged ("f" ^ (Ref "f" * Ref "x" * Ref "y")) product_tag
 let fstL = Sop * iop * (Kop * Kop)
 let sndL = Sop * iop * (Kop * ki)
 
 let%expect_test "pairs" =
   let reduce t = print_s [%sexp (sk_red t : t)] in
-  reduce (fstL * (pairL * Ref "fst" * Ref "snd"));
+  reduce (fstL * (pair * Ref "fst" * Ref "snd"));
   [%expect {| &fst |}];
-  reduce (sndL * (pairL * Ref "fst" * Ref "snd"));
+  reduce (sndL * (pair * Ref "fst" * Ref "snd"));
   [%expect {| &snd |}]
 
 (* Booleans *)
 
 let tt = tagged fstL bool_tag
 let ff = tagged sndL bool_tag
-let cond = "b" ^ "x" ^ "y" ^ (Ref "b" * (pairL * Ref "x" * Ref "y"))
+let cond = "b" ^ "x" ^ "y" ^ (Ref "b" * (pair * Ref "x" * Ref "y"))
 
 let%expect_test "bool" =
   let reduce t = print_s [%sexp (sk_red t : t)] in
@@ -145,25 +145,34 @@ let%expect_test "bool conversion" =
   reduce_bool (of_bool false);
   [%expect {| false |}]
 
+let not = "b" ^ cond * Ref "b" * ff * tt
+
+let%expect_test "not" =
+  let reduce_bool t = print_s [%sexp (to_bool t : bool)] in
+  reduce_bool (not * tt);
+  [%expect {| false |}];
+  reduce_bool (not * ff);
+  [%expect {| true |}]
+
 (* Natural numbers *)
 
 let zero = tagged fstL nat_tag
 let succ = "n" ^ tagged (Sop * sndL * (Kop * Ref "n")) nat_tag
 let one = succ * zero
 let rec num k = match k with 0 -> zero | n -> succ * num (n - 1)
-let isZero = "n" ^ (Ref "n" * (pairL * tt * (Kop * ff)))
-let predN = "n" ^ (Ref "n" * (pairL * zero * iop))
+let isZero = "n" ^ (Ref "n" * (pair * tt * (Kop * ff)))
+let pred = "n" ^ (Ref "n" * (pair * zero * iop))
 
 let%expect_test "nat" =
   print_s [%sexp (to_bool (isZero * zero) : bool)];
   [%expect {| true |}];
   print_s [%sexp (to_bool (isZero * one) : bool)];
   [%expect {| false |}];
-  print_s [%sexp (to_bool (isZero * (predN * one)) : bool)];
+  print_s [%sexp (to_bool (isZero * (pred * one)) : bool)];
   [%expect {| true |}]
 
 let of_nat = num
-let rec to_nat t = if to_bool (isZero * t) then 0 else 1 + to_nat (predN * t)
+let rec to_nat t = if to_bool (isZero * t) then 0 else 1 + to_nat (pred * t)
 
 let%expect_test "nat conversion" =
   let reduce_nat t = print_s [%sexp (to_nat t : int)] in
@@ -181,13 +190,13 @@ let%expect_test "nat conversion" =
 (* Sum types *)
 
 let sum_tag = Sop * Kop * Sop
-let inl_c = "p" ^ tagged (pairL * tt * Ref "p") sum_tag
-let inr_c = "p" ^ tagged (pairL * ff * Ref "p") sum_tag
+let inl_c = "p" ^ tagged (pair * tt * Ref "p") sum_tag
+let inr_c = "p" ^ tagged (pair * ff * Ref "p") sum_tag
 
 let case_c =
   "p" ^ "c"
   ^ fstL * Ref "c"
-    * (pairL
+    * (pair
       * (fstL * Ref "p" * (fstL * (sndL * Ref "c")))
       * (sndL * Ref "p" * (sndL * (sndL * Ref "c"))))
 
@@ -195,13 +204,13 @@ let%expect_test "sum" =
   let reduce t = print_s [%sexp (sk_red t : t)] in
   reduce
     (case_c
-    * (pairL * Ref "f" * Ref "g")
-    * (inl_c * (pairL * Ref "left" * Ref "dummy")));
+    * (pair * Ref "f" * Ref "g")
+    * (inl_c * (pair * Ref "left" * Ref "dummy")));
   [%expect {| (&f &left) |}];
   reduce
     (case_c
-    * (pairL * Ref "f" * Ref "g")
-    * (inr_c * (pairL * Ref "dummy" * Ref "right")));
+    * (pair * Ref "f" * Ref "g")
+    * (inr_c * (pair * Ref "dummy" * Ref "right")));
   [%expect {| (&g &right) |}]
 
 (* Waiting *)
@@ -226,12 +235,21 @@ let%expect_test "lam" =
   print_s [%sexp (to_bool (isZeroLam * one) : bool)];
   [%expect {| false |}]
 
+let cond_mono d = lam "b" (lam "x" (lam "y" (Ref "b" * (pair * Ref "x" * Ref "y")) d) d) ff
+
+let%expect_test "cond_mono" =
+  let reduce_nat t = print_s [%sexp (to_nat t : int)] in
+  reduce_nat (cond_mono zero * tt * one * zero);
+  [%expect {| 1 |}];
+  reduce_nat (cond_mono zero * ff * one * zero);
+  [%expect {| 0 |}]
+
 let omega_z =
   "w" ^ "f" ^ "x"
   ^ Ref "f"
     * tagged
         (tagged
-           (wait2 (Ref "w") (Ref "w") (Ref "f")) (* delay reduction of w *)
+           (wait2 (tagged (Ref "w") wop) (tagged (Ref "w") wop) (Ref "f")) (* delay reduction of w *)
            z_tag)
         (* to make a Rec type *)
         (Kop * Ref "x")
@@ -247,9 +265,9 @@ let primrec0_abs =
   ^
   (* p : V * Nat *)
   sndL * Ref "p"
-  * (pairL * Ref "g"
+  * (pair * Ref "g"
     * ("n1"
-      ^ (Ref "h" * Ref "n1" * (Ref "z" * (pairL * (fstL * Ref "p") * Ref "n1")))
+      ^ (Ref "h" * Ref "n1" * (Ref "z" * (pair * (fstL * Ref "p") * Ref "n1")))
       ))
 
 let primrec0 g h =
@@ -257,7 +275,7 @@ let primrec0 g h =
     (Sop
     * (Kop * (Sop * (Sop * (Kop * sndL) * iop)))
     * (Sop
-      * (Kop * (Sop * (Kop * (pairL * g))))
+      * (Kop * (Sop * (Kop * (pair * g))))
       * (Sop
         * (Kop * (Sop * (Kop * (Sop * (Sop * (Kop * h) * iop)))))
         * (Sop
@@ -268,11 +286,11 @@ let primrec0 g h =
             * (Sop
               * (Sop * (Kop * Sop)
                 * (Sop * (Kop * Kop)
-                  * (Sop * (Kop * pairL) * (Sop * (Kop * fstL) * iop))))
+                  * (Sop * (Kop * pair) * (Sop * (Kop * fstL) * iop))))
               * (Kop * iop)))))))
 
 let primrec g h x = primrec0 (g * x) (h * x)
-let prim_plus0 m n = primrec iop (Kop * (Kop * succ)) m * (pairL * zero * n)
+let prim_plus0 m n = primrec iop (Kop * (Kop * succ)) m * (pair * zero * n)
 let prim_plus = "m" ^ "n" ^ prim_plus0 (Ref "m") (Ref "n")
 
 let%expect_test "prim_plus" =
@@ -295,7 +313,7 @@ let minrec_abs =
   ^ cond
     * (Ref "f" * (sndL * Ref "vn"))
     * (sndL * Ref "vn")
-    * (Ref "z" * (pairL * (fstL * Ref "vn") * (succ * (sndL * Ref "vn"))))
+    * (Ref "z" * (pair * (fstL * Ref "vn") * (succ * (sndL * Ref "vn"))))
 
 let minrec0 f =
   z
@@ -309,10 +327,19 @@ let minrec0 f =
       * (Sop * (Kop * Sop) * (Sop * (Kop * Kop) * iop))
       * (Kop
         * (Sop
-          * (Sop * (Kop * pairL) * (Sop * (Kop * fstL) * iop))
+          * (Sop * (Kop * pair) * (Sop * (Kop * fstL) * iop))
           * (Sop * (Kop * succ) * (Sop * (Kop * sndL) * iop))))))
 
-let minrec f x = Sop * (Kop * minrec0 (f * x)) * (pairL * zero)
+let minrec f x = Sop * (Kop * minrec0 (f * x)) * (pair * zero)
+
+let%expect_test "minrec" =
+  let reduce_nat t = print_s [%sexp (to_nat t : int)] in
+  reduce_nat (minrec ("_" ^ "n" ^ isZero * Ref "n") Sop * zero);
+  [%expect {| 0 |}];
+  reduce_nat (minrec ("_" ^ "n" ^ not * (isZero * Ref "n")) Sop * zero);
+  [%expect {| 1 |}];
+  reduce_nat (minrec ("_" ^ "n" ^ not * (isZero * (pred * Ref "n"))) Sop * zero);
+  [%expect {| 2 |}]
 
 (* Lists *)
 
@@ -322,26 +349,26 @@ let nil_c = "d" ^ tagged fstL (list_tag (Ref "d"))
 let cons_c =
   "p" ^ tagged ("q" ^ (sndL * Ref "q" * Ref "p")) (list_tag (fstL * Ref "p"))
 
-let is_empty = "p" ^ (Ref "p" * (pairL * tt * (Kop * ff)))
+let is_empty = "p" ^ (Ref "p" * (pair * tt * (Kop * ff)))
 
 let%expect_test "list" =
   let reduce_bool t = print_s [%sexp (to_bool t : bool)] in
   let nil_nat = nil_c * zero in
   reduce_bool (is_empty * nil_nat);
   [%expect {| true |}];
-  reduce_bool (is_empty * (cons_c * (pairL * Ref "x" * nil_nat)));
+  reduce_bool (is_empty * (cons_c * (pair * Ref "x" * nil_nat)));
   [%expect {| false |}];
   reduce_bool
     (is_empty
-    * (cons_c * (pairL * Ref "x" * (cons_c * (pairL * Ref "y" * nil_nat)))));
+    * (cons_c * (pair * Ref "x" * (cons_c * (pair * Ref "y" * nil_nat)))));
   [%expect {| false |}]
 
 let rec of_list dummy = function
   | [] -> nil_c * dummy
-  | x :: xs -> cons_c * (pairL * x * of_list x xs)
+  | x :: xs -> cons_c * (pair * x * of_list x xs)
 
 let rec to_list t =
-  match sk_red (t * (pairL * Ref "nil" * ("p" ^ (Ref "p" * Ref "cons")))) with
+  match sk_red (t * (pair * Ref "nil" * ("p" ^ (Ref "p" * Ref "cons")))) with
   | Ref "nil" -> []
   | App (App (Ref "cons", hd), tl) -> hd :: to_list tl
   | _ -> failwith "invalid list"
@@ -353,9 +380,9 @@ let%expect_test "list conversion" =
   let nil_nat = nil_c * zero in
   reduce_list nil_nat;
   [%expect {| () |}];
-  reduce_list (cons_c * (pairL * one * nil_nat));
+  reduce_list (cons_c * (pair * one * nil_nat));
   [%expect {| (1) |}];
-  reduce_list (cons_c * (pairL * zero * (cons_c * (pairL * one * nil_nat))));
+  reduce_list (cons_c * (pair * zero * (cons_c * (pair * one * nil_nat))));
   [%expect {| (0 1) |}];
   reduce_list (of_list zero []);
   [%expect {| () |}];
@@ -365,10 +392,10 @@ let%expect_test "list conversion" =
 let fold_left_c_abs =
   "z" ^ "p"
   ^ sndL * Ref "p"
-    * (pairL * (fstL * Ref "p")
+    * (pair * (fstL * Ref "p")
       * ("q"
         ^ Ref "z"
-          * (pairL
+          * (pair
             * (Ref "f" * (fstL * Ref "p") * (fstL * Ref "q"))
             * (sndL * Ref "q"))))
 
@@ -377,7 +404,7 @@ let fold_left_c f =
     (Sop
     * (Kop * (Sop * (Sop * (Kop * sndL) * iop)))
     * (Sop
-      * (Kop * (Sop * (Sop * (Kop * pairL) * (Sop * (Kop * fstL) * iop))))
+      * (Kop * (Sop * (Sop * (Kop * pair) * (Sop * (Kop * fstL) * iop))))
       * (Sop
         * (Sop * (Kop * Sop)
           * (Sop * (Kop * Kop) * (Sop * (Kop * Sop) * (Sop * (Kop * Kop) * iop)))
@@ -386,7 +413,7 @@ let fold_left_c f =
           * (Sop
             * (Sop * (Kop * Sop)
               * (Sop
-                * (Kop * (Sop * (Kop * pairL)))
+                * (Kop * (Sop * (Kop * pair)))
                 * (Sop
                   * (Sop * (Kop * Sop)
                     * (Sop * (Kop * Kop)
@@ -397,7 +424,7 @@ let fold_left_c f =
 let%expect_test "fold_left_c" =
   let sum list =
     let list = of_list zero (List.map ~f:of_nat list) in
-    let t = fold_left_c prim_plus * (pairL * zero * list) in
+    let t = fold_left_c prim_plus * (pair * zero * list) in
     print_s [%sexp (to_nat t : int)]
   in
   sum [];
