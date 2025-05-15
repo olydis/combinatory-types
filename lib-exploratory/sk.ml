@@ -56,6 +56,20 @@ let%expect_test "sk_red" =
   reduce (iop * Ref "x");
   [%expect {| &x |}]
 
+(* Tags *)
+
+module Tag = struct
+  type 'arg t = { ctr : int; args : 'arg list } [@@deriving equal, sexp_of]
+end
+
+let tag t = Sop * (Sop * (Kop * Kop) * (Kop * Kop)) * t
+let tagged f t = Sop * (Sop * (Kop * Kop) * f) * t
+
+let%expect_test "tagged" =
+  let reduce t = print_s [%sexp (sk_red t : t)] in
+  reduce (tagged (Ref "f") (Ref "g") * Ref "x");
+  [%expect {| (&f &x) |}]
+
 (* star abstraction *)
 
 let rec occurs x m =
@@ -70,6 +84,9 @@ let rec star x m =
   | true -> (
       match m with
       | Ref _ -> iop
+      | App (m1, Ref x2) when String.equal x x2 && not (occurs x m1) ->
+          (* TODO: Explicitly exclude [tagged f t] values? *)
+          m1
       | App (m1, m2) -> Sop * star x m1 * star x m2
       | _ -> failwith "unreachable")
 
@@ -81,6 +98,8 @@ let%expect_test "star" =
   [%expect {| (K S) |}];
   reduce ("x" ^ Ref "x");
   [%expect {| ((S K) K) |}];
+  reduce ("x" ^ (Ref "y" * Ref "x"));
+  [%expect {| &y |}];
   reduce (("a" ^ "b" ^ (Ref "b" * Ref "a")) * Ref "x" * Ref "y");
   [%expect {| (&y &x) |}]
 
@@ -98,17 +117,3 @@ let%expect_test "reduction of example terms" =
   let reduce t = print_s [%sexp (sk_red t : t)] in
   reduce (wop * Ref "f" * Ref "x" * Ref "y");
   [%expect {| ((&f &x) &y) |}]
-
-(* Tags *)
-
-module Tag = struct
-  type 'arg t = { ctr : int; args : 'arg list } [@@deriving equal, sexp_of]
-end
-
-let tag t = Sop * (Sop * (Kop * Kop) * (Kop * Kop)) * t
-let tagged f t = Sop * (Sop * (Kop * Kop) * f) * t
-
-let%expect_test "tagged" =
-  let reduce t = print_s [%sexp (sk_red t : t)] in
-  reduce (tagged (Ref "f") (Ref "g") * Ref "x");
-  [%expect {| (&f &x) |}]

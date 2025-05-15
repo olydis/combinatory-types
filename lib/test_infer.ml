@@ -190,8 +190,7 @@ let%expect_test "fuel requirements" =
   latex_row "$S^{10}$" (self_apply_l 10 Sop);
   latex_row "$S^{100}$" (self_apply_l 100 Sop);
   (* for table in paper *)
-  [%expect
-    {|
+  [%expect {|
     {\bf ff} & yes & 22 & 21 & 0.95 \\
     {\bf tt} & yes & 19 & 18 & 0.95 \\
     {\bf cond} & yes & 89 & 88 & 0.99 \\
@@ -238,8 +237,7 @@ let%expect_test "fuel requirements" =
   List.iter
     [ num 0; num 1; num 2; num 3; num 4; num 1000 ]
     ~f:(fun t -> print_s [%sexp (infer_measure t : int * int * float)]);
-  [%expect
-    {|
+  [%expect {|
     (20 19 0.95)
     (58 75 1.29)
     (96 131 1.36)
@@ -257,8 +255,7 @@ let%expect_test "fuel requirements" =
       self_apply_r 1000 iop;
     ]
     ~f:(fun t -> print_s [%sexp (infer_measure t : int * int * float)]);
-  [%expect
-    {|
+  [%expect {|
     (33 62 1.88)
     (303 602 1.99)
     (3003 6002 2)
@@ -282,8 +279,7 @@ let%expect_test "fuel requirements" =
       self_apply_r 1000 Sop;
     ]
     ~f:(fun t -> print_s [%sexp (infer_measure t : int * int * float)]);
-  [%expect
-    {|
+  [%expect {|
     (2 1 0.5)
     (3 2 0.67)
     (4 6 1.5)
@@ -307,8 +303,7 @@ let%expect_test "fuel requirements" =
       self_apply_r 1000 wop;
     ]
     ~f:(fun t -> print_s [%sexp (infer_measure t : int * int * float)]);
-  [%expect
-    {|
+  [%expect {|
     (407 856 2.1)
     (3737 8776 2.35)
     (37037 87976 2.38)

@@ -191,7 +191,7 @@ module Data_type : sig
     app:(app:app -> ty_args:t list -> arg:t -> t option) ->
     Sk.t option Tag.t * Sk.t list
 
-  val friendly_sexp_of_data : sexp_of_t:(t -> Sexp.t) -> data -> Sexp.t
+  val sexp_of_t : t -> Sexp.t
   val app : app:app -> data -> t -> t option
   val infer : app:app -> t * t option Tag.t -> t Tag.t option
 end = struct
@@ -212,6 +212,26 @@ end = struct
   end
 
   let known = Stack.create ()
+
+  let friendly_sexp_of_data ~sexp_of_t ({ ctr; args } : data) =
+    let friendly_name =
+      Stack.find_map known ~f:(fun { Known.friendly_name; tag; _ } ->
+          if Int.equal tag.ctr ctr then Some friendly_name else None)
+      |> Option.value_exn
+    in
+    if List.is_empty args then Sexp.Atom friendly_name
+    else List (Atom friendly_name :: List.map ~f:sexp_of_t args)
+
+  (* like what ppx_sexp_conv generates, but with human-friendly representation for known data types *)
+  let rec sexp_of_t t =
+    match t with
+    | Kty -> Sexp.Atom "Kty"
+    | K1ty ty -> List [ Atom "K1ty"; sexp_of_t ty ]
+    | Sty -> Sexp.Atom "Sty"
+    | S1ty vty -> List [ Atom "S1ty"; sexp_of_t vty ]
+    | S2ty (uty, vty) -> List [ Atom "S2ty"; sexp_of_t uty; sexp_of_t vty ]
+    | Data data -> friendly_sexp_of_data ~sexp_of_t data
+
   let tagged f t = tagged f (Tag.sk_of t |> tag)
 
   let create ~friendly_name ~tag ~ctors ~app =
@@ -290,6 +310,9 @@ end = struct
               in
               app ty arg)
         in
+        (* if String.equal friendly_name "nat" then
+          List.iter from_ctors ~f:(fun from_ctor ->
+              print_s ~mach:() [%sexp (from_ctor : t option)]); *)
         List.reduce_exn from_ctors ~f:(fun a b ->
             match (a, b) with
             | Some a, Some b -> if equal_ty a b then Some a else None
@@ -317,23 +340,6 @@ end = struct
   let app ~app { Tag.ctr; args = ty_args } arg =
     let%bind.Option { app = a; _ } = find ctr in
     a ~app ~ty_args ~arg
-
-  let friendly_sexp_of_data ~sexp_of_t ({ ctr; args } : data) =
-    let friendly_name =
-      Stack.find_map known ~f:(fun { Known.friendly_name; tag; _ } ->
-          if Int.equal tag.ctr ctr then Some friendly_name else None)
-      |> Option.value_exn
-    in
-    if List.is_empty args then Sexp.Atom friendly_name
-    else List (Atom friendly_name :: List.map ~f:sexp_of_t args)
 end
 
-(* like what ppx_sexp_conv generates, but with human-friendly representation for known data types *)
-let rec sexp_of_t t =
-  match t with
-  | Kty -> Sexp.Atom "Kty"
-  | K1ty ty -> List [ Atom "K1ty"; sexp_of_t ty ]
-  | Sty -> Sexp.Atom "Sty"
-  | S1ty vty -> List [ Atom "S1ty"; sexp_of_t vty ]
-  | S2ty (uty, vty) -> List [ Atom "S2ty"; sexp_of_t uty; sexp_of_t vty ]
-  | Data data -> Data_type.friendly_sexp_of_data ~sexp_of_t data
+let sexp_of_t = Data_type.sexp_of_t

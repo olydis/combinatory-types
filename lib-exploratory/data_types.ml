@@ -31,17 +31,55 @@ let%expect_test "pairs" =
   reduce (snd * (pair * Ref "fst" * Ref "snd"));
   [%expect {| &snd |}]
 
+(* Function types and Fixpoints *)
+
+let fun_, to_fun =
+  Data_type.create_manual ~friendly_name:"fun" ~type_args:2
+    ~ctors:(fun _fun_tag ->
+      [
+        ( [ `Term "f"; `Type ("arg_ty", 0) ],
+          Ref "f",
+          fun ~app tag_args args ->
+            match (tag_args, args) with
+            | [ Some uty; _ ], [ f ] ->
+                let%bind.Option rty = app f uty in
+                Some [ uty; rty ]
+            | _ -> None );
+      ])
+    ~app:(fun ~app:_ ~ty_args ~arg ->
+      match ty_args with
+      | [ uty1; vty1 ] when equal_ty arg uty1 -> Some vty1
+      | _ -> None)
+  |> fun (tag, ctors) -> (tag, to_tup1_exn ctors)
+
+let lam x m ~arg = sk_red (to_fun * (x ^ m) * arg)
+
+let%expect_test "lam" =
+  let id_lam = lam "x" (Ref "x") ~arg:(Tag.sk_of product) in
+  print_s [%sexp (sk_red (id_lam * Kop) : Sk.t)];
+  [%expect {| K |}];
+  print_s [%sexp (sk_red (id_lam * Sop) : Sk.t)];
+  [%expect {| S |}];
+  let id_lam = lam "x" (Ref "x") ~arg:(Tag.dummy_value Kop) in
+  print_s [%sexp (sk_red (id_lam * Kop) : Sk.t)];
+  [%expect {| K |}];
+  print_s [%sexp (sk_red (id_lam * Sop) : Sk.t)];
+  [%expect {| S |}]
+
+let id = "type" ^ (to_fun * iop * Ref "type")
+
 (* Booleans *)
 
 let bool, (tt, ff) =
   Data_type.create ~friendly_name:"bool" ~type_args:0 ~ctors:(fun _bool_tag ->
       [
-        ([], fst, fun ~app:_ _tag_args _args -> Some []);
-        ([], snd, fun ~app:_ _tag_args _args -> Some []);
+        ([], "t" ^ lam "e" (Ref "t") ~arg:(Tag.dummy_value (Ref "t")), fun ~app:_ _tag_args _args -> Some []);
+        ([], "t" ^ lam "e" (Ref "e") ~arg:(Tag.dummy_value (Ref "t")), fun ~app:_ _tag_args _args -> Some []);
       ])
   |> fun (tag, ctors) -> (tag, to_tup2_exn ctors)
 
-let cond = "b" ^ "x" ^ "y" ^ (Ref "b" * (pair * Ref "x" * Ref "y"))
+let cond = "b" ^ "x" ^ "y" ^ (Ref "b" * Ref "x" * Ref "y")
+let not_ = "b" ^ (cond * Ref "b" * ff * tt)
 
 let%expect_test "bool" =
   let reduce t = print_s [%sexp (sk_red t : Sk.t)] in
@@ -74,9 +112,11 @@ let%expect_test "bool conversion" =
 let nat, (zero, succ) =
   Data_type.create ~friendly_name:"nat" ~type_args:0 ~ctors:(fun nat_tag ->
       [
-        ([], fst, fun ~app:_ _tag_args _args -> Some []);
+        ( [],
+          "z" ^ lam "s" (Ref "z") ~arg:(Tag.sk_of fun_ ~args:[ Some (Tag.sk_of nat_tag); Some (Tag.dummy_value (Ref "z")) ]),
+          fun ~app:_ _tag_args _args -> Some [] );
         ( [ `Term ("n", fun _ -> Tag.data_type_of nat_tag []) ],
-          Sop * snd * (Kop * Ref "n"),
+          "z" ^ lam "s" (Ref "s" * Ref "n") ~arg:(Tag.sk_of fun_ ~args:[ Some (Tag.sk_of nat_tag); Some (Tag.dummy_value (Ref "z")) ]),
           fun ~app:_ _tag_args args ->
             match args with
             | [ n ] when equal_ty n (Tag.data_type_of nat_tag []) -> Some []
@@ -86,8 +126,8 @@ let nat, (zero, succ) =
 
 let one = succ * zero
 let rec num k = match k with 0 -> zero | n -> succ * num (n - 1)
-let isZero = "n" ^ (Ref "n" * (pair * tt * (Kop * ff)))
-let pred = "n" ^ (Ref "n" * (pair * zero * iop))
+let isZero = "n" ^ (Ref "n" * tt * (lam "n" ff ~arg:(Tag.sk_of nat)))
+let pred = "n" ^ (Ref "n" * zero * (lam "n" (Ref "n") ~arg:(Tag.sk_of nat)))
 
 let%expect_test "nat" =
   print_s [%sexp (to_bool (isZero * zero) : bool)];
@@ -148,43 +188,6 @@ let%expect_test "sum" =
     * (inr * Tag.dummy_value (Ref "dummy") * Ref "right"));
   [%expect {| (&g &right) |}]
 
-(* Function types and Fixpoints *)
-
-let fun_, to_fun =
-  Data_type.create_manual ~friendly_name:"fun" ~type_args:2
-    ~ctors:(fun _fun_tag ->
-      [
-        ( [ `Term "f"; `Type ("arg_ty", 0) ],
-          Ref "f",
-          fun ~app tag_args args ->
-            match (tag_args, args) with
-            | [ Some uty; _ ], [ f ] ->
-                let%bind.Option rty = app f uty in
-                Some [ uty; rty ]
-            | _ -> None );
-      ])
-    ~app:(fun ~app:_ ~ty_args ~arg ->
-      match ty_args with
-      | [ uty1; vty1 ] when equal_ty arg uty1 -> Some vty1
-      | _ -> None)
-  |> fun (tag, ctors) -> (tag, to_tup1_exn ctors)
-
-let lam x m ~arg = to_fun * (x ^ m) * arg
-
-let%expect_test "lam" =
-  let isZeroLam = lam "x" (isZero * Ref "x") ~arg:(Tag.sk_of nat) in
-  print_s [%sexp (to_bool (isZeroLam * zero) : bool)];
-  [%expect {| true |}];
-  print_s [%sexp (to_bool (isZeroLam * one) : bool)];
-  [%expect {| false |}];
-  let isZeroLam = lam "x" (isZero * Ref "x") ~arg:(Tag.dummy_value zero) in
-  print_s [%sexp (to_bool (isZeroLam * zero) : bool)];
-  [%expect {| true |}];
-  print_s [%sexp (to_bool (isZeroLam * one) : bool)];
-  [%expect {| false |}]
-
-let id = "type" ^ (to_fun * iop * Ref "type")
-
 (* Recursion *)
 
 let rec_, z =
@@ -235,10 +238,9 @@ let rec_, z =
 let primrec0 g h =
   z
   * ("z" ^ "p"
-    ^ snd * Ref "p"
-      * (pair * g
-        * ("n1"
-          ^ (h * Ref "n1" * (Ref "z" * (pair * (fst * Ref "p") * Ref "n1"))))))
+    ^ snd * Ref "p" * g
+      * (lam "n1" (h * Ref "n1" * (Ref "z" * (pair * (fst * Ref "p") * Ref "n1"))) ~arg:(Tag.sk_of nat))
+    )
 
 let primrec g h x = primrec0 (g * x) (h * x)
 let prim_plus0 m n = primrec iop (Kop * (Kop * succ)) m * (pair * zero * n)

@@ -28,6 +28,12 @@ let%expect_test "infer" =
   [%expect {| bool |}];
   infer zero;
   [%expect {| nat |}];
+  infer (not_ * ff);
+  [%expect {| bool |}];
+  infer (not_ * tt);
+  [%expect {| bool |}];
+  infer (isZero * zero);
+  [%expect {| bool |}];
   infer (iop * zero);
   [%expect {| nat |}];
   infer (succ * zero);
@@ -92,7 +98,7 @@ let%expect_test "infer" =
   infer (id * Tag.sk_of nat * tt);
   [%expect {| |}];
   infer (zero * zero);
-  [%expect {| |}];
+  [%expect {| (fun (fun nat nat) nat) |}];
   infer (isZero * tt);
   [%expect {| |}];
   infer (lam "x" (isZero * Ref "x") ~arg:(Tag.dummy_value zero) * tt);
@@ -110,19 +116,19 @@ let%expect_test "fuel requirements" =
   List.iter [ num 0; num 1; num 2; num 3; num 4; num 1000 ] ~f:dump;
   [%expect
     {|
-    (24 23 0.96)
-    (66 83 1.26)
-    (108 143 1.32)
-    (150 203 1.35)
-    (192 263 1.37)
-    (42024 60023 1.43)
+    (87 86 0.99)
+    (193 219 1.13)
+    (299 352 1.18)
+    (405 485 1.2)
+    (511 618 1.21)
+    (106087 133086 1.25)
     |}];
   dump (lam "x" (isZero * Ref "x") ~arg:(Tag.dummy_value zero) * tt);
-  [%expect {| (220 365 1.66) |}];
+  [%expect {| (314 418 1.33) |}];
   dump (lam "x" (isZero * Ref "x") ~arg:(Tag.sk_of bool));
-  [%expect {| (179 321 1.79) |}];
+  [%expect {| (177 242 1.37) |}];
   dump (prim_plus * zero * zero);
-  [%expect {| (856 1292 1.51) |}];
+  [%expect {| (919 1269 1.38) |}];
   dump (prim_plus * num 1000 * num 1000);
-  [%expect {| (84856 121292 1.43) |}];
+  [%expect {| (212919 267269 1.26) |}];
   ()
