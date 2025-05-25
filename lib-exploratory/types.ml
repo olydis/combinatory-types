@@ -27,7 +27,9 @@ let rec pc_type gamma p =
   | App (Kop, p1) -> K1ty (pc_type gamma p1)
   | App (App (Sop, p1), p2) -> S2ty (pc_type gamma p1, pc_type gamma p2)
   | Ref x -> (
-      match get x gamma with Some ty -> ty | _ -> failwith "invalid program")
+      match get x gamma with
+      | Some ty -> ty
+      | None -> raise_s [%sexp "invalid program, undefined ref:", (x : string)])
   | _ -> failwith "invalid program"
 
 let p_type p = pc_type [] p
@@ -79,6 +81,8 @@ let p_type_match pattern ty =
 (* Encoding and decoding tags *)
 
 module Tag = struct
+  type ty = t [@@deriving sexp_of]
+
   include Tag
 
   (* Tags are either dummy values or "proper".
@@ -151,9 +155,24 @@ module Tag = struct
       | K1ty t ->
           let { Tag.ctr; args } = tag_of_t t in
           Data
-            { ctr; args = List.map ~f:(fun arg -> Option.value_exn arg) args }
+            {
+              ctr;
+              args =
+                List.map
+                  ~f:(fun arg ->
+                    Option.value_exn
+                      ~message:
+                        (Sexp.to_string
+                           [%sexp
+                             "tag arg was None",
+                             ~~(ctr : int),
+                             ~~(args : ty option list)])
+                      arg)
+                  args;
+            }
       | S1ty t -> t
-      | _ -> failwith "invalid tag"
+      | Data { ctr; args } -> Data { ctr; args }
+      | other -> raise_s [%sexp "invalid tag", (other : ty)]
     in
     fun t -> tag_of_t t
 
@@ -299,15 +318,12 @@ end = struct
       ~app:(fun ~app ~ty_args ~arg ->
         let from_ctors =
           List.map ctors ~f:(fun (vars, ctor, _args) ->
-              let ty =
-                pc_type
-                  (List.filter_map
-                     ~f:(function
-                       | `Type _ -> None
-                       | `Term (name, get) -> Some (name, get ty_args))
-                     vars)
-                  ctor
+              let gamma =
+                List.map vars ~f:(function
+                  | `Type (name, index) -> (name, List.nth_exn ty_args index)
+                  | `Term (name, get) -> (name, get ty_args))
               in
+              let ty = pc_type gamma ctor in
               app ty arg)
         in
         (* if String.equal friendly_name "nat" then

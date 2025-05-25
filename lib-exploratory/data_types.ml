@@ -73,8 +73,12 @@ let id = "type" ^ (to_fun * iop * Ref "type")
 let bool, (tt, ff) =
   Data_type.create ~friendly_name:"bool" ~type_args:0 ~ctors:(fun _bool_tag ->
       [
-        ([], "t" ^ lam "e" (Ref "t") ~arg:(Tag.dummy_value (Ref "t")), fun ~app:_ _tag_args _args -> Some []);
-        ([], "t" ^ lam "e" (Ref "e") ~arg:(Tag.dummy_value (Ref "t")), fun ~app:_ _tag_args _args -> Some []);
+        ( [],
+          "t" ^ lam "e" (Ref "t") ~arg:(Tag.dummy_value (Ref "t")),
+          fun ~app:_ _tag_args _args -> Some [] );
+        ( [],
+          "t" ^ lam "e" (Ref "e") ~arg:(Tag.dummy_value (Ref "t")),
+          fun ~app:_ _tag_args _args -> Some [] );
       ])
   |> fun (tag, ctors) -> (tag, to_tup2_exn ctors)
 
@@ -113,10 +117,26 @@ let nat, (zero, succ) =
   Data_type.create ~friendly_name:"nat" ~type_args:0 ~ctors:(fun nat_tag ->
       [
         ( [],
-          "z" ^ lam "s" (Ref "z") ~arg:(Tag.sk_of fun_ ~args:[ Some (Tag.sk_of nat_tag); Some (Tag.dummy_value (Ref "z")) ]),
+          "z"
+          ^ lam "s" (Ref "z")
+              ~arg:
+                (Tag.sk_of fun_
+                   ~args:
+                     [
+                       Some (Tag.sk_of nat_tag);
+                       Some (Tag.dummy_value (Ref "z"));
+                     ]),
           fun ~app:_ _tag_args _args -> Some [] );
         ( [ `Term ("n", fun _ -> Tag.data_type_of nat_tag []) ],
-          "z" ^ lam "s" (Ref "s" * Ref "n") ~arg:(Tag.sk_of fun_ ~args:[ Some (Tag.sk_of nat_tag); Some (Tag.dummy_value (Ref "z")) ]),
+          "z"
+          ^ lam "s" (Ref "s" * Ref "n")
+              ~arg:
+                (Tag.sk_of fun_
+                   ~args:
+                     [
+                       Some (Tag.sk_of nat_tag);
+                       Some (Tag.dummy_value (Ref "z"));
+                     ]),
           fun ~app:_ _tag_args args ->
             match args with
             | [ n ] when equal_ty n (Tag.data_type_of nat_tag []) -> Some []
@@ -126,8 +146,8 @@ let nat, (zero, succ) =
 
 let one = succ * zero
 let rec num k = match k with 0 -> zero | n -> succ * num (n - 1)
-let isZero = "n" ^ (Ref "n" * tt * (lam "n" ff ~arg:(Tag.sk_of nat)))
-let pred = "n" ^ (Ref "n" * zero * (lam "n" (Ref "n") ~arg:(Tag.sk_of nat)))
+let isZero = "n" ^ (Ref "n" * tt * lam "n" ff ~arg:(Tag.sk_of nat))
+let pred = "n" ^ (Ref "n" * zero * lam "n" (Ref "n") ~arg:(Tag.sk_of nat))
 
 let%expect_test "nat" =
   print_s [%sexp (to_bool (isZero * zero) : bool)];
@@ -159,13 +179,23 @@ let sum, (inl, inr) =
   Data_type.create ~friendly_name:"sum" ~type_args:2 ~ctors:(fun _sum_tag ->
       [
         ( [ `Term ("l", fun args -> List.nth_exn args 0); `Type ("r", 1) ],
-          "p" ^ (fst * Ref "p" * Ref "l"),
+          "resty"
+          ^ lam "onl"
+              (lam "onr" (Ref "onl" * Ref "l")
+                 ~arg:
+                   (Tag.sk_of fun_ ~args:[ Some (Ref "r"); Some (Ref "resty") ]))
+              ~arg:(Tag.sk_of fun_ ~args:[ Some (Ref "l"); Some (Ref "resty") ]),
           fun ~app:_ tag_args args ->
             match tag_args with
             | [ _; Some r ] -> Some (args @ [ r ])
             | _ -> None );
         ( [ `Type ("l", 0); `Term ("r", fun args -> List.nth_exn args 1) ],
-          "p" ^ (snd * Ref "p" * Ref "r"),
+          "resty"
+          ^ lam "onl"
+              (lam "onr" (Ref "onr" * Ref "r")
+                 ~arg:
+                   (Tag.sk_of fun_ ~args:[ Some (Ref "r"); Some (Ref "resty") ]))
+              ~arg:(Tag.sk_of fun_ ~args:[ Some (Ref "l"); Some (Ref "resty") ]),
           fun ~app:_ tag_args args ->
             match tag_args with
             | [ Some l; _ ] -> Some ([ l ] @ args)
@@ -173,18 +203,17 @@ let sum, (inl, inr) =
       ])
   |> fun (tag, ctors) -> (tag, to_tup2_exn ctors)
 
-let case_c = "p" ^ "c" ^ (Ref "c" * Ref "p")
+let case_c =
+  "resty" ^ "onl" ^ "onr" ^ "c" ^ (Ref "c" * Ref "resty" * Ref "onl" * Ref "onr")
 
 let%expect_test "sum" =
   let reduce t = print_s [%sexp (sk_red t : Sk.t)] in
   reduce
-    (case_c
-    * (pair * Ref "f" * Ref "g")
+    (case_c * Ref "ty" * Ref "f" * Ref "g"
     * (inl * Ref "left" * Tag.dummy_value (Ref "dummy")));
   [%expect {| (&f &left) |}];
   reduce
-    (case_c
-    * (pair * Ref "f" * Ref "g")
+    (case_c * Ref "ty" * Ref "f" * Ref "g"
     * (inr * Tag.dummy_value (Ref "dummy") * Ref "right"));
   [%expect {| (&g &right) |}]
 
@@ -239,8 +268,9 @@ let primrec0 g h =
   z
   * ("z" ^ "p"
     ^ snd * Ref "p" * g
-      * (lam "n1" (h * Ref "n1" * (Ref "z" * (pair * (fst * Ref "p") * Ref "n1"))) ~arg:(Tag.sk_of nat))
-    )
+      * lam "n1"
+          (h * Ref "n1" * (Ref "z" * (pair * (fst * Ref "p") * Ref "n1")))
+          ~arg:(Tag.sk_of nat))
 
 let primrec g h x = primrec0 (g * x) (h * x)
 let prim_plus0 m n = primrec iop (Kop * (Kop * succ)) m * (pair * zero * n)

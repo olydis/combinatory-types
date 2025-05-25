@@ -46,9 +46,15 @@ let%expect_test "infer" =
   [%expect {| (sum nat bool) |}];
   infer (inr * Tag.sk_of nat * tt);
   [%expect {| (sum nat bool) |}];
-  infer (case_c * (pair * isZero * iop) * (inl * zero * Tag.dummy_value tt));
+  infer ((inl * zero * Tag.dummy_value tt) * Tag.sk_of bool);
+  [%expect {| (fun (fun nat bool) (fun (fun bool bool) bool)) |}];
+  infer ((inl * zero * Tag.dummy_value tt) * Tag.sk_of bool * (to_fun * isZero * Tag.sk_of nat));
+  [%expect {| (fun (fun bool bool) bool) |}];
+  infer ((inl * zero * Tag.dummy_value tt) * Tag.sk_of bool * (to_fun * isZero * Tag.sk_of nat) * (to_fun * iop * Tag.sk_of bool));
   [%expect {| bool |}];
-  infer (case_c * (pair * isZero * iop) * (inr * Tag.dummy_value zero * tt));
+  infer (case_c * Tag.sk_of bool * (to_fun * isZero * Tag.sk_of nat) * (to_fun * iop * Tag.sk_of bool) * (inl * zero * Tag.dummy_value tt));
+  [%expect {| bool |}];
+  infer (case_c * Tag.sk_of bool * (to_fun * isZero * Tag.sk_of nat) * (to_fun * iop * Tag.sk_of bool) * (inr * Tag.dummy_value zero * tt));
   [%expect {| bool |}];
   infer (lam "x" (isZero * Ref "x") ~arg:(Tag.dummy_value zero));
   [%expect {| (fun nat bool) |}];
