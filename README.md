@@ -1,4 +1,4 @@
-This is an OCaml implementation of the type inference developed for the paper "Simple Types for Polymorphic Functions" which is still being polished.
+This is an OCaml implementation of the type inference developed for the paper "Simple Types for Polymorphic Functions".
 Barry Jay's Rocq proofs can be found [here](https://github.com/barry-jay-personal/combinatory-types).
 
 ## Getting Started
